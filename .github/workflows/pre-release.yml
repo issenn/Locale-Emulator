@@ -1,0 +1,116 @@
+name: 'Build and Pre-release'
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'master'
+    tags-ignore:
+      - "*"
+  pull_request:
+    branches:
+      - 'master'
+  watch:
+    types: [started]
+
+env:
+  TZ: 'Asia/Shanghai'
+
+jobs:
+  build:
+    env:
+      Platform: ${{ matrix.platform }}
+      Configuration: ${{ matrix.config }}
+      SolutionPath: LocaleEmulator.sln
+    strategy:
+      matrix:
+        os:
+          - 'windows-2016'
+        platform:
+          # - 'Win32'
+          # - 'x64'
+          - 'Any CPU'
+        config:
+          # - 'Debug'
+          - 'Release'
+        # channel:
+          # - 'nightly'
+          # - 'stable'
+
+    name: 'Build and Pre-release Locale-Emulator on action'
+    if: github.event.repository.owner.id == github.event.sender.id
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      ## see https://github.com/actions/checkout
+      - name: 'Checkout master code'
+        id: 'checkout'
+        uses: 'actions/checkout@v2'
+        with:
+          # repository: xupefei/Locale-Emulator-Core
+          ref: master
+          # https://docs.github.com/en/actions/reference/authentication-in-a-workflow
+          token: ${{ secrets.ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: 'Download issenn/Locale-Emulator-Core Release LoaderDll assets'
+        uses: 'robinraju/release-downloader@v1'
+        with:
+          repository: 'issenn/Locale-Emulator-Core'
+          # latest: true
+          tag: 'latest'
+          fileName: 'Locale.Emulator.Core.LoaderDll.tar.gz'
+          out-file-path: '.'
+          token: ${{ secrets.ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: 'Download issenn/Locale-Emulator-Core Release LocaleEmulator assets'
+        uses: 'robinraju/release-downloader@v1'
+        with:
+          repository: 'issenn/Locale-Emulator-Core'
+          # latest: true
+          tag: 'latest'
+          fileName: 'Locale.Emulator.Core.LocaleEmulator.tar.gz'
+          out-file-path: '.'
+          token: ${{ secrets.ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Set up .NET Core 3.1
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: '3.1.x'
+
+      ## see https://github.com/microsoft/setup-msbuild
+      - name: Set up MSBuild 2017
+        uses: microsoft/setup-msbuild@v1.0.2
+        with:
+          vs-version: '15.9'
+
+      - name: Set up NuGet
+        uses: nuget/setup-nuget@v1
+        with:
+          nuget-version: '5.x'
+     
+      - name: 'Restore NuGet Packages and Build'
+        run: |
+          nuget restore ${{ env.SolutionPath }}
+          msbuild ${{ env.SolutionPath }}  # /p:Configuration=${{ env.Configuration }} /p:Platform=${{ env.Platform }}
+          tar -C Build/${{ env.Configuration }} -zxvf Locale.Emulator.Core.LoaderDll.tar.gz Locale.Emulator.Core.LoaderDll/LoaderDll.dll --strip-components=1
+          tar -C Build/${{ env.Configuration }} -zxvf Locale.Emulator.Core.LocaleEmulator.tar.gz Locale.Emulator.Core.LocaleEmulator/LocaleEmulator.dll --strip-components=1
+          tar -C Build -zcvf Locale.Emulator.tar.gz --exclude=*.pdb --exclude=*.exe.config --exclude=LECommonLibrary.dll --exclude=LEContextMenuHandler.dll --transform='flags=r;s|^${{ env.Configuration }}|Locale.Emulator|' ${{ env.Configuration }}
+
+      # Upload artifact to Github Actions
+      - name: 'Upload Artifact'
+        uses: 'actions/upload-artifact@v2'
+        with:
+          # name: LocaleEmulator
+          path: 'Locale.Emulator.tar.gz'
+          if-no-files-found: error
+
+      - name: 'Automatic Releases'
+        id: 'automatic_releases'
+        uses: 'marvinpinto/action-automatic-releases@latest'
+        with:
+          repo_token:  "${{ secrets.ACCESS_TOKEN || secrets.GITHUB_TOKEN }}"
+          prerelease: true
+          automatic_release_tag: 'latest'
+          title: 'Latest Build'
+          files: |
+            Locale.Emulator.tar.gz

@@ -1,0 +1,56 @@
+name: "Sync"
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '00 00 * * *'
+  watch:
+    types: [started]
+
+env:
+  TZ: 'Asia/Shanghai'
+
+jobs:
+  sync:
+    name: sync
+    if: github.event.repository.owner.id == github.event.sender.id
+    runs-on: ubuntu-18.04
+
+    steps:
+      - name: Checkout sync repo
+        uses: actions/checkout@v2
+        with:
+          ref: build
+          token: ${{ secrets.ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Sync with upstream
+        if: github.repository != 'issenn/Locale-Emulator'
+        uses: aormsby/Fork-Sync-With-Upstream-action@v2.3
+        with:
+          upstream_repository: issenn/Locale-Emulator
+          upstream_branch: build
+          target_branch: build
+          git_pull_args: '-s recursive -Xtheirs'
+          github_token: ${{ secrets.ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+
+  sync-master:
+    name: sync
+    if: github.event.repository.owner.id == github.event.sender.id
+    runs-on: ubuntu-18.04
+
+    steps:
+      - name: Checkout sync repo
+        uses: actions/checkout@v2
+        with:
+          ref: master
+          token: ${{ secrets.ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Sync with upstream
+        if: github.repository != 'xupefei/Locale-Emulator'
+        uses: aormsby/Fork-Sync-With-Upstream-action@v2.3
+        with:
+          upstream_repository: xupefei/Locale-Emulator
+          upstream_branch: master
+          target_branch: master
+          git_pull_args: '-s recursive -Xtheirs'
+          github_token: ${{ secrets.ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
